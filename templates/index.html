@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centering App</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; margin: 0; overflow: hidden; display: flex; flex-direction: column; height: 100vh;}
+        
+        .top-bar { background-color: #161b22; border-bottom: 1px solid #30363d; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; z-index: 100;}
+        .app-title { font-size: 1.5em; font-weight: bold; color: #58a6ff; margin: 0;}
+        
+        .file-controls { display: flex; gap: 15px; }
+        .btn { background-color: #21262d; color: #c9d1d9; border: 1px solid #30363d; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s;}
+        .btn:hover { background-color: #30363d; color: white; }
+        .btn-primary { background-color: #238636; border-color: #2ea043; color: white;}
+        .btn-primary:hover { background-color: #2ea043; }
+        
+        /* Hide default file inputs */
+        input[type="file"] { display: none; }
+        
+        .workspace { display: flex; flex: 1; padding: 20px; gap: 30px; align-items: center; justify-content: center; position: relative;}
+        
+        .img-wrapper { position: relative; border-radius: 10px; border: 2px solid #30363d; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; background-color: #000;}
+        #sniper-wrapper { cursor: none; }
+        #back-wrapper { cursor: crosshair; }
+        canvas { display: block; }
+        
+        .crosshair-line { position: absolute; pointer-events: none; z-index: 20; display: none; transition: transform 0.1s linear;}
+        #crosshair-x { width: 100%; height: 2px; left: 0; background-image: linear-gradient(to right, rgba(255, 0, 255, 0.9) 10px, transparent 10px); background-size: 20px 2px; }
+        #crosshair-y { height: 100%; width: 2px; top: 0; background-image: linear-gradient(to bottom, rgba(255, 0, 255, 0.9) 10px, transparent 10px); background-size: 2px 20px; }
+        
+        #loupe-container { position: absolute; width: 180px; height: 180px; border: 2px solid #ff00ff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,0,0,0.9); pointer-events: none; display: none; z-index: 1050; background-color: #0d1117; overflow: hidden; }
+        #loupe-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        
+        .loupe-cross-line { position: absolute; pointer-events: none; z-index: 1051; transition: transform 0.1s linear;}
+        #loupe-x { width: 100%; height: 1px; top: 50%; left: 0; background-image: linear-gradient(to right, rgba(255, 0, 255, 0.8) 4px, transparent 4px); background-size: 20px 1px; transform: translateY(-50%);}
+        #loupe-y { height: 100%; width: 1px; left: 50%; top: 0; background-image: linear-gradient(to bottom, rgba(255, 0, 255, 0.8) 4px, transparent 4px); background-size: 1px 20px; transform: translateX(-50%);}
+        
+        #tool-state-text { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: #1d76db; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 1.2em; z-index: 1100;}
+        #math-box { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); display: none; background-color: #21262d; border: 2px solid #30363d; border-radius: 8px; padding: 15px 30px; text-align: center; font-size: 1.4em; font-weight: bold; color: #c9d1d9; z-index: 1100; box-shadow: 0 5px 15px rgba(0,0,0,0.5);}
+        
+        .controls-map { position: absolute; left: 20px; bottom: 20px; background-color: #161b22; padding: 15px; border-radius: 8px; border: 1px solid #30363d; font-size: 0.85em; color: #8b949e; line-height: 1.6; z-index: 100; display: flex; gap: 30px;}
+        .controls-map strong { color: #58a6ff; }
+        .controls-map .key { background: #21262d; border: 1px solid #4b5563; padding: 2px 6px; border-radius: 4px; color: #c9d1d9; font-family: monospace;}
+        
+        /* Loading Text */
+        #loading-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(13,17,23,0.9); z-index: 2000; display: flex; align-items: center; justify-content: center; font-size: 2em; font-weight: bold; color: #58a6ff;}
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">Loading Defaults...</div>
+
+    <div class="top-bar">
+        <h1 class="app-title">Centering App</h1>
+        <div class="file-controls">
+            <button class="btn" onclick="loadDefaults()">↻ Load Defaults</button>
+            <button class="btn" onclick="document.getElementById('front-upload').click()">+ Browse Front...</button>
+            <button class="btn" onclick="document.getElementById('back-upload').click()">+ Browse Back...</button>
+            <button class="btn btn-primary" id="save-btn" onclick="resetToNewCard()" style="display:none;">Save & Next</button>
+            
+            <input type="file" id="front-upload" accept="image/*" onchange="handleFileUpload(event, 'front')">
+            <input type="file" id="back-upload" accept="image/*" onchange="handleFileUpload(event, 'back')">
+        </div>
+    </div>
+    
+    <div class="workspace">
+        <div id="tool-state-text" style="display:none;"></div>
+        <div id="math-box">L/R: -- | T/B: --</div>
+        
+        <div class="img-wrapper" id="sniper-wrapper">
+            <canvas id="sniper-canvas"></canvas>
+            <div id="crosshair-x" class="crosshair-line"></div>
+            <div id="crosshair-y" class="crosshair-line"></div>
+        </div>
+        
+        <div class="img-wrapper" id="back-wrapper">
+            <img id="speed-back" src="" alt="No Backside Loaded" style="display: block; max-height: 75vh; max-width: 40vw; object-fit: contain;">
+        </div>
+        
+        <img id="hidden-source" src="" crossorigin="anonymous" style="display:none;">
+    </div>
+    
+    <div id="loupe-container">
+        <canvas id="loupe-canvas" width="180" height="180"></canvas>
+        <div id="loupe-x" class="loupe-cross-line"></div>
+        <div id="loupe-y" class="loupe-cross-line"></div>
+    </div>
+
+    <div class="controls-map">
+        <div>
+            <strong>Left Hand (Keyboard)</strong><br>
+            <span class="key">WASD</span> : Micro-nudge Crosshairs<br>
+            <span class="key">Spacebar</span> : Lock Point (Click)<br>
+            <span class="key">Shift</span> : Precise Speed + Loupe<br>
+            <span class="key">Z</span> : Undo Exactly One Point<br>
+        </div>
+        <div>
+            <strong>Right Hand (Tilt & View)</strong><br>
+            <span class="key">I / K</span> : Tilt Vertical Line<br>
+            <span class="key">J / L</span> : Tilt Horizontal Line<br>
+            <span class="key">Esc</span> : Reset UI<br>
+        </div>
+    </div>
+
+    <script>
+        // --- APP STATE ---
+        let currentFrontFilename = "manual_card.jpg";
+
+        // --- FILE LOADING LOGIC ---
+        document.addEventListener("DOMContentLoaded", () => {
+            loadDefaults();
+        });
+
+        function loadDefaults() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+            fetch('/get_defaults')
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('loading-overlay').style.display = 'none';
+                    if(data.front) {
+                        currentFrontFilename = data.front_filename;
+                        loadFrontImage(data.front);
+                    } else {
+                        updateStateText("No default front image found in scans folder.", "#da3633");
+                    }
+                    
+                    if(data.back) {
+                        document.getElementById('speed-back').src = data.back;
+                        document.getElementById('speed-back').alt = "";
+                    } else {
+                        document.getElementById('speed-back').src = "";
+                        document.getElementById('speed-back').alt = "No Backside Found";
+                    }
+                });
+        }
+
+        // Native Browser File Handling (Zero Backend Needed for Browsing!)
+        function handleFileUpload(event, type) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const objectURL = URL.createObjectURL(file);
+            if (type === 'front') {
+                currentFrontFilename = file.name;
+                loadFrontImage(objectURL);
+            } else {
+                document.getElementById('speed-back').src = objectURL;
+                document.getElementById('speed-back').alt = "";
+            }
+            // Reset input so you can select the same file again if needed
+            event.target.value = ""; 
+        }
+
+        function loadFrontImage(srcUrl) {
+            const hidImg = document.getElementById('hidden-source');
+            const canvas = document.getElementById('sniper-canvas');
+            const sWrap = document.getElementById('sniper-wrapper');
+            
+            document.getElementById('save-btn').style.display = 'none';
+            mathBox.style.display = 'none';
+            
+            hidImg.onload = () => {
+                const maxW = window.innerWidth * 0.45;
+                const maxH = window.innerHeight * 0.75;
+                const ratio = Math.min(maxW / hidImg.naturalWidth, maxH / hidImg.naturalHeight);
+                
+                const exactW = hidImg.naturalWidth * ratio;
+                const exactH = hidImg.naturalHeight * ratio;
+                
+                sWrap.style.width = exactW + 'px'; sWrap.style.height = exactH + 'px';
+                canvas.style.width = exactW + 'px'; canvas.style.height = exactH + 'px';
+                canvas.width = hidImg.naturalWidth; canvas.height = hidImg.naturalHeight;
+                
+                resetSniperState();
+                hidImg.onload = null;
+            };
+            hidImg.src = srcUrl;
+        }
+
+        function resetToNewCard() {
+            document.getElementById('save-btn').style.display = 'none';
+            mathBox.style.display = 'none';
+            resetSniperState();
+        }
+
+        // --- MATH LIBRARY ---
+        function getHomography(src, dst) {
+            let A = [];
+            for (let i = 0; i < 4; i++) {
+                let x = src[i].x, y = src[i].y;
+                let u = dst[i].x, v = dst[i].y;
+                A.push([x, y, 1, 0, 0, 0, -u*x, -u*y, u]);
+                A.push([0, 0, 0, x, y, 1, -v*x, -v*y, v]);
+            }
+            for (let i = 0; i < 8; i++) {
+                let maxRow = i;
+                for (let j = i + 1; j < 8; j++) if (Math.abs(A[j][i]) > Math.abs(A[maxRow][i])) maxRow = j;
+                let temp = A[i]; A[i] = A[maxRow]; A[maxRow] = temp;
+                for (let j = i + 1; j < 8; j++) {
+                    let f = A[j][i] / A[i][i];
+                    for (let k = i; k < 9; k++) A[j][k] -= A[i][k] * f;
+                }
+            }
+            let h = new Array(8);
+            for (let i = 7; i >= 0; i--) {
+                let sum = 0;
+                for (let j = i + 1; j < 8; j++) sum += A[i][j] * h[j];
+                h[i] = (A[i][8] - sum) / A[i][i];
+            }
+            h.push(1.0);
+            return h;
+        }
+
+        function applyHomography(p, h) {
+            let u = h[0]*p.x + h[1]*p.y + h[2];
+            let v = h[3]*p.x + h[4]*p.y + h[5];
+            let w = h[6]*p.x + h[7]*p.y + h[8];
+            return {x: u/w, y: v/w};
+        }
+
+        // --- THE SNIPER ENGINE (UNTOUCHED LOGIC) ---
+        let clicks = [];
+        let flattened = false;
+        let finalImageBase64 = "";
+        
+        const canvas = document.getElementById('sniper-canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const backImg = document.getElementById('speed-back');
+        
+        const stateText = document.getElementById('tool-state-text');
+        const mathBox = document.getElementById('math-box');
+        
+        const cxLine = document.getElementById('crosshair-x');
+        const cyLine = document.getElementById('crosshair-y');
+        
+        const loupeContainer = document.getElementById('loupe-container');
+        const loupeCtx = document.getElementById('loupe-canvas').getContext('2d', { willReadFrequently: true });
+        const loupeX = document.getElementById('loupe-x');
+        const loupeY = document.getElementById('loupe-y');
+        
+        let lRatioStr = "--";
+        let tRatioStr = "--";
+        let shiftPressed = false;
+        let hoverTarget = 'front';
+        let lastInternalX = 0;
+        let lastInternalY = 0;
+        
+        let tiltX = 0;
+        let tiltY = 0;
+
+        document.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey) return;
+            const k = e.key.toLowerCase();
+            
+            if (e.repeat && !['w','a','s','d','i','k','j','l'].includes(k)) return;
+            
+            if (e.key === 'Escape') resetToNewCard();
+            else if (e.key === 'Shift') { shiftPressed = true; updateLoupe(lastMouseE); }
+            else if (k === 'z') { undoClick(); }
+            else if (e.key === ' ') { e.preventDefault(); registerClick(); } 
+            else if (['w','a','s','d'].includes(k)) {
+                e.preventDefault();
+                if (clicks.length >= 8) return;
+                
+                const step = shiftPressed ? 1 : 5; 
+                
+                if (k === 'w') lastInternalY -= step;
+                if (k === 's') lastInternalY += step;
+                if (k === 'a') lastInternalX -= step;
+                if (k === 'd') lastInternalX += step;
+                
+                const cW = hoverTarget === 'front' ? canvas.width : backImg.naturalWidth;
+                const cH = hoverTarget === 'front' ? canvas.height : backImg.naturalHeight;
+                lastInternalX = Math.max(0, Math.min(cW, lastInternalX));
+                lastInternalY = Math.max(0, Math.min(cH, lastInternalY));
+                
+                syncCSSCrosshairs();
+            }
+            else if (['i','k','j','l'].includes(k)) {
+                e.preventDefault();
+                if (flattened || clicks.length >= 8) return; 
+                
+                const tiltStep = shiftPressed ? 0.2 : 1.0;
+                if (k === 'j') tiltX -= tiltStep; 
+                if (k === 'l') tiltX += tiltStep;
+                if (k === 'i') tiltY -= tiltStep; 
+                if (k === 'k') tiltY += tiltStep;
+                
+                applyCrosshairTilts();
+            }
+        });
+        
+        document.addEventListener('keyup', e => {
+            if (e.key === 'Shift') { shiftPressed = false; loupeContainer.style.display = 'none'; }
+        });
+
+        let lastMouseE = null;
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (clicks.length >= 8) return;
+            lastMouseE = e;
+            hoverTarget = 'front';
+            
+            const rect = canvas.getBoundingClientRect();
+            lastInternalX = ((e.clientX - rect.left) / rect.width) * canvas.width;
+            lastInternalY = ((e.clientY - rect.top) / rect.height) * canvas.height;
+            
+            syncCSSCrosshairs();
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            cxLine.style.display = 'none'; cyLine.style.display = 'none'; loupeContainer.style.display = 'none';
+        });
+
+        backImg.addEventListener('mousemove', (e) => {
+            lastMouseE = e;
+            hoverTarget = 'back';
+            
+            cxLine.style.display = 'none'; cyLine.style.display = 'none';
+            
+            const rect = backImg.getBoundingClientRect();
+            lastInternalX = ((e.clientX - rect.left) / rect.width) * backImg.naturalWidth;
+            lastInternalY = ((e.clientY - rect.top) / rect.height) * backImg.naturalHeight;
+            
+            if (shiftPressed) updateLoupe(e);
+        });
+
+        backImg.addEventListener('mouseleave', () => {
+            loupeContainer.style.display = 'none';
+        });
+        
+        function syncCSSCrosshairs() {
+            if (hoverTarget !== 'front') return;
+            const rect = canvas.getBoundingClientRect();
+            const cssX = (lastInternalX / canvas.width) * rect.width;
+            const cssY = (lastInternalY / canvas.height) * rect.height;
+            
+            cxLine.style.display = 'block'; cyLine.style.display = 'block';
+            cxLine.style.top = (cssY / rect.height * 100) + '%'; 
+            cyLine.style.left = (cssX / rect.width * 100) + '%'; 
+            
+            const fakeE = { pageX: rect.left + cssX + window.scrollX, pageY: rect.top + cssY + window.scrollY };
+            if (shiftPressed) updateLoupe(fakeE);
+        }
+        
+        function applyCrosshairTilts() {
+            cxLine.style.transform = `rotate(${tiltX}deg)`;
+            cyLine.style.transform = `rotate(${tiltY}deg)`;
+            loupeX.style.transform = `translateY(-50%) rotate(${tiltX}deg)`;
+            loupeY.style.transform = `translateX(-50%) rotate(${tiltY}deg)`;
+        }
+
+        function updateLoupe(e) {
+            if (!e || !shiftPressed || (hoverTarget === 'front' && clicks.length >= 8)) return;
+            
+            loupeContainer.style.display = 'block';
+            loupeContainer.style.left = (e.pageX - 90) + 'px';
+            loupeContainer.style.top = (e.pageY - 90) + 'px';
+            
+            const zoom = 4; 
+            const sW = 180 / zoom;
+            const sH = 180 / zoom;
+            const sx = lastInternalX - sW / 2;
+            const sy = lastInternalY - sH / 2;
+            
+            if (hoverTarget === 'front') {
+                loupeContainer.style.backgroundImage = 'none'; 
+                loupeX.style.display = 'block'; loupeY.style.display = 'block';
+                loupeCtx.clearRect(0, 0, 180, 180);
+                loupeCtx.drawImage(canvas, sx, sy, sW, sH, 0, 0, 180, 180);
+                
+                if (!flattened && clicks.length > 0) {
+                    clicks.forEach(p => {
+                        const drawX = (p.x - sx) * zoom;
+                        const drawY = (p.y - sy) * zoom;
+                        loupeCtx.beginPath();
+                        loupeCtx.moveTo(drawX - 10, drawY); loupeCtx.lineTo(drawX + 10, drawY);
+                        loupeCtx.moveTo(drawX, drawY - 10); loupeCtx.lineTo(drawX, drawY + 10);
+                        loupeCtx.lineWidth = 2; loupeCtx.strokeStyle = '#ff00ff'; loupeCtx.stroke();
+                    });
+                }
+            } else if (hoverTarget === 'back') {
+                loupeX.style.display = 'none'; loupeY.style.display = 'none';
+                loupeCtx.clearRect(0, 0, 180, 180);
+                
+                const rect = backImg.getBoundingClientRect();
+                const cssX = (lastInternalX / backImg.naturalWidth) * rect.width;
+                const cssY = (lastInternalY / backImg.naturalHeight) * rect.height;
+                
+                loupeContainer.style.backgroundImage = `url('${backImg.src}')`;
+                loupeContainer.style.backgroundSize = `${rect.width * zoom}px ${rect.height * zoom}px`;
+                const bgX = -(cssX * zoom - 90);
+                const bgY = -(cssY * zoom - 90);
+                loupeContainer.style.backgroundPosition = `${bgX}px ${bgY}px`;
+            }
+        }
+
+        function resetSniperState() {
+            clicks = []; flattened = false; mathBox.style.display = 'none';
+            document.getElementById('save-btn').style.display = 'none';
+            tiltX = 0; tiltY = 0; applyCrosshairTilts();
+            
+            cxLine.style.display = 'none'; cyLine.style.display = 'none';
+            
+            const hidImg = document.getElementById('hidden-source');
+            if (hidImg.src && hidImg.src !== window.location.href) {
+                updateStateText("Phase 1: Click 4 Outer Corners (Any Order)");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(hidImg, 0, 0, canvas.width, canvas.height);
+            } else {
+                updateStateText("Load an image to begin.", "#da3633");
+            }
+        }
+
+        function updateStateText(txt, color="#1d76db") {
+            stateText.style.display = 'block';
+            stateText.style.background = color;
+            stateText.innerText = txt;
+        }
+
+        function undoClick() {
+            if (hoverTarget === 'back' || clicks.length === 0) return;
+            
+            if (clicks.length === 8) {
+                clicks.pop();
+                mathBox.style.display = 'none';
+                document.getElementById('save-btn').style.display = 'none';
+                syncCSSCrosshairs(); 
+                updateStateText(`Phase 2: Click Inner Borders (3/4)`);
+                drawState();
+                return;
+            }
+            
+            if (flattened && clicks.length === 4) {
+                flattened = false;
+                clicks.pop();
+                
+                const hidImg = document.getElementById('hidden-source');
+                const sWrap = document.getElementById('sniper-wrapper');
+                
+                const maxW = window.innerWidth * 0.45;
+                const maxH = window.innerHeight * 0.75;
+                const ratio = Math.min(maxW / hidImg.naturalWidth, maxH / hidImg.naturalHeight);
+                const exactW = hidImg.naturalWidth * ratio;
+                const exactH = hidImg.naturalHeight * ratio;
+                
+                sWrap.style.width = exactW + 'px'; sWrap.style.height = exactH + 'px';
+                canvas.style.width = exactW + 'px'; canvas.style.height = exactH + 'px';
+                canvas.width = hidImg.naturalWidth; canvas.height = hidImg.naturalHeight;
+                
+                applyCrosshairTilts(); 
+                
+                updateStateText(`Phase 1: Click 4 Outer Corners (3/4)`);
+                drawState();
+                return;
+            }
+            
+            clicks.pop();
+            drawState();
+            if (flattened) updateStateText(`Phase 2: Click Inner Borders (${clicks.length - 4}/4)`);
+            else updateStateText(`Phase 1: Click 4 Outer Corners (${clicks.length}/4)`);
+        }
+
+        function drawState() {
+            if(!flattened) {
+                const hidImg = document.getElementById('hidden-source');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(hidImg, 0, 0, canvas.width, canvas.height);
+                
+                clicks.forEach((p) => {
+                    ctx.beginPath();
+                    ctx.moveTo(p.x - 15, p.y); ctx.lineTo(p.x + 15, p.y);
+                    ctx.moveTo(p.x, p.y - 15); ctx.lineTo(p.x, p.y + 15);
+                    ctx.lineWidth = 4; ctx.strokeStyle = '#ff00ff'; ctx.stroke();
+                });
+            } else {
+                const flatImg = new Image();
+                flatImg.onload = () => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(flatImg, 0, 0);
+                    for (let i = 4; i < clicks.length; i++) {
+                        if (i === 4 || i === 5) {
+                            ctx.beginPath(); ctx.moveTo(clicks[i].x, 0); ctx.lineTo(clicks[i].x, canvas.height);
+                            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)'; ctx.lineWidth = 2; ctx.stroke();
+                        } else {
+                            ctx.beginPath(); ctx.moveTo(0, clicks[i].y); ctx.lineTo(canvas.width, clicks[i].y);
+                            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)'; ctx.lineWidth = 2; ctx.stroke();
+                        }
+                    }
+                };
+                flatImg.src = finalImageBase64;
+            }
+        }
+
+        function registerClick() {
+            if (clicks.length >= 8 || hoverTarget === 'back') return;
+            const hidImg = document.getElementById('hidden-source');
+            if (!hidImg.src || hidImg.src === window.location.href) return;
+            
+            clicks.push({ x: lastInternalX, y: lastInternalY });
+            
+            if (clicks.length < 4) {
+                drawState();
+                updateStateText(`Phase 1: Click 4 Outer Corners (${clicks.length}/4)`);
+            } else if (clicks.length === 4) {
+                drawState();
+                performFlatteningWarp();
+            } else if (clicks.length < 8) {
+                drawState(); 
+                updateStateText(`Phase 2: Click Inner Borders (${clicks.length - 4}/4)`);
+            } else if (clicks.length === 8) {
+                drawState();
+                cxLine.style.display = 'none'; cyLine.style.display = 'none'; loupeContainer.style.display = 'none';
+                calculateFinalMath();
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 2) { e.preventDefault(); undoClick(); return; }
+            if (e.button === 0) registerClick();
+        });
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        function performFlatteningWarp() {
+            flattened = true;
+            updateStateText("Flattening... (Please Wait)", "#e3b341");
+            
+            cxLine.style.transform = 'none'; cyLine.style.transform = 'none';
+            loupeX.style.transform = 'translateY(-50%)'; loupeY.style.transform = 'translateX(-50%)';
+            
+            let cx = clicks.slice(0,4).reduce((sum, p) => sum + p.x, 0) / 4;
+            let cy = clicks.slice(0,4).reduce((sum, p) => sum + p.y, 0) / 4;
+            
+            let sortedCorners = clicks.slice(0,4).sort((a, b) => {
+                return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
+            });
+            
+            setTimeout(() => {
+                const targetW = 1500;
+                const targetH = 2100;
+                
+                const flatData = ctx.createImageData(targetW, targetH);
+                const srcData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                const sW = canvas.width;
+                const sH = canvas.height;
+                
+                const hInv = getHomography([
+                    {x: 0, y: 0}, {x: targetW, y: 0}, {x: targetW, y: targetH}, {x: 0, y: targetH}
+                ], sortedCorners);
+                
+                for (let y = 0; y < targetH; y++) {
+                    for (let x = 0; x < targetW; x++) {
+                        const p = applyHomography({x: x, y: y}, hInv);
+                        const sx = Math.floor(p.x);
+                        const sy = Math.floor(p.y);
+                        
+                        if (sx >= 0 && sx < sW && sy >= 0 && sy < sH) {
+                            const srcIdx = (sy * sW + sx) * 4;
+                            const dstIdx = (y * targetW + x) * 4;
+                            flatData.data[dstIdx] = srcData[srcIdx];
+                            flatData.data[dstIdx+1] = srcData[srcIdx+1];
+                            flatData.data[dstIdx+2] = srcData[srcIdx+2];
+                            flatData.data[dstIdx+3] = srcData[srcIdx+3]; 
+                        }
+                    }
+                }
+                
+                canvas.width = targetW;
+                canvas.height = targetH;
+                ctx.putImageData(flatData, 0, 0);
+                
+                finalImageBase64 = canvas.toDataURL("image/jpeg", 0.95);
+                
+                const sWrap = document.getElementById('sniper-wrapper');
+                const maxW = window.innerWidth * 0.45;
+                const maxH = window.innerHeight * 0.75;
+                const ratio = Math.min(maxW / targetW, maxH / targetH);
+                
+                const exactW = targetW * ratio;
+                const exactH = targetH * ratio;
+                sWrap.style.width = exactW + 'px'; sWrap.style.height = exactH + 'px';
+                canvas.style.width = exactW + 'px'; canvas.style.height = exactH + 'px';
+                
+                updateStateText("Phase 2: Click 4 Inner Yellow Borders (Any Order)", "#1d76db");
+                
+                if(shiftPressed) updateLoupe({ pageX: window.scrollX + sWrap.getBoundingClientRect().left + exactW/2, pageY: window.scrollY + sWrap.getBoundingClientRect().top + exactH/2 });
+                
+            }, 50); 
+        }
+
+        function calculateFinalMath() {
+            let pts = clicks.slice(4, 8);
+            
+            pts.sort((a,b) => a.x - b.x); 
+            let leftPx = pts[0].x;
+            let rightPx = pts[3].x;
+            
+            pts.sort((a,b) => a.y - b.y);
+            let topPx = pts[0].y;
+            let botPx = pts[3].y;
+            
+            let lr_ratio = Math.round((leftPx / (leftPx + (1500 - rightPx))) * 100);
+            lRatioStr = `${lr_ratio}/${100 - lr_ratio}`;
+            
+            let tb_ratio = Math.round((topPx / (topPx + (2100 - botPx))) * 100);
+            tRatioStr = `${tb_ratio}/${100 - tb_ratio}`;
+            
+            updateStateText("Perspective Corrected & Saved!", "#3fb950");
+            displayMath();
+            saveMathToBackend();
+        }
+
+        function displayMath() {
+            mathBox.style.display = 'block';
+            document.getElementById('save-btn').style.display = 'block';
+            
+            let lrNums = lRatioStr.split('/');
+            let lrCol = Math.max(Number(lrNums[0]), Number(lrNums[1])) <= 55 ? '#3fb950' : '#da3633';
+            let tbNums = tRatioStr.split('/');
+            let tbCol = Math.max(Number(tbNums[0]), Number(tbNums[1])) <= 55 ? '#3fb950' : '#da3633';
+            
+            mathBox.innerHTML = `L/R: <span style="color: ${lrCol}">${lRatioStr}</span> | T/B: <span style="color: ${tbCol}">${tRatioStr}</span>`;
+        }
+
+        function saveMathToBackend() {
+            // [NEW FEATURE] Draw the text onto the 1500x2100 canvas before converting to base64
+            const finalCvs = document.createElement('canvas');
+            finalCvs.width = 1500;
+            finalCvs.height = 2100;
+            const fCtx = finalCvs.getContext('2d');
+            
+            const flatImg = new Image();
+            flatImg.onload = () => {
+                fCtx.drawImage(flatImg, 0, 0);
+                
+                // Draw permanent measurement lines
+                fCtx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
+                fCtx.lineWidth = 2;
+                for (let i = 4; i < clicks.length; i++) {
+                    if (i === 4 || i === 5) {
+                        fCtx.beginPath(); fCtx.moveTo(clicks[i].x, 0); fCtx.lineTo(clicks[i].x, 2100); fCtx.stroke();
+                    } else {
+                        fCtx.beginPath(); fCtx.moveTo(0, clicks[i].y); fCtx.lineTo(1500, clicks[i].y); fCtx.stroke();
+                    }
+                }
+
+                // Draw Semi-Transparent Black Box for Ratios
+                fCtx.fillStyle = "rgba(0, 0, 0, 0.6)";
+                fCtx.fillRect(20, 20, 600, 100);
+                
+                // Print Ratios in the top left corner
+                fCtx.font = "bold 50px Arial";
+                fCtx.fillStyle = "#ffffff";
+                fCtx.fillText(`L/R: ${lRatioStr}  |  T/B: ${tRatioStr}`, 40, 85);
+
+                const finalSavedImageBase64 = finalCvs.toDataURL("image/jpeg", 0.95);
+
+                fetch('/save_export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        original_name: currentFrontFilename, 
+                        image_base64: finalSavedImageBase64 
+                    })
+                });
+            };
+            flatImg.src = finalImageBase64;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# PyInstaller Build Artifacts
+build/
+dist/
+*.spec
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Compiled Executable (Should be in GitHub Releases, not source control)
+CenteringApp
