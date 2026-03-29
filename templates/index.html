@@ -21,9 +21,8 @@
         
         .workspace { display: flex; flex: 1; padding: 20px; gap: 30px; align-items: center; justify-content: center; position: relative;}
         
-        .img-wrapper { position: relative; border-radius: 10px; border: 2px solid #30363d; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; background-color: #000;}
-        #sniper-wrapper { cursor: none; }
-        #back-wrapper { cursor: crosshair; }
+        .img-wrapper { position: relative; border-radius: 10px; border: 2px solid #30363d; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; background-color: #000; cursor: crosshair;}
+        #back-wrapper img { cursor: crosshair; }
         canvas { display: block; }
         
         .crosshair-line { position: absolute; pointer-events: none; z-index: 20; display: none; transition: transform 0.1s linear;}
@@ -58,6 +57,7 @@
             <button class="btn" onclick="document.getElementById('front-upload').click()">+ Browse Front...</button>
             <button class="btn" onclick="document.getElementById('back-upload').click()">+ Browse Back...</button>
             <button class="btn btn-primary" id="save-btn" onclick="resetToNewCard()" style="display:none;">Save & Next</button>
+            <button class="btn" style="background-color: #da3633; border-color: #b32d2a; color: white;" onclick="exitApp()">Exit App</button>
             
             <input type="file" id="front-upload" accept="image/*" onchange="handleFileUpload(event, 'front')">
             <input type="file" id="back-upload" accept="image/*" onchange="handleFileUpload(event, 'back')">
@@ -93,6 +93,7 @@
             <span class="key">WASD</span> : Micro-nudge Crosshairs<br>
             <span class="key">Spacebar</span> : Lock Point (Click)<br>
             <span class="key">Shift</span> : Precise Speed + Loupe<br>
+            <span class="key">+ / -</span> : Adjust Loupe Zoom<br>
             <span class="key">Z</span> : Undo Exactly One Point<br>
         </div>
         <div>
@@ -106,6 +107,17 @@
     <script>
         // --- APP STATE ---
         let currentFrontFilename = "manual_card.jpg";
+        let currentZoom = 3;
+
+        function exitApp() {
+            if(confirm("Are you sure you want to exit the app?")) {
+                fetch('/exit', { method: 'POST' }).then(() => {
+                    document.body.innerHTML = "<h1 style='text-align:center; margin-top: 20%; color: #c9d1d9;'>App Closed. You can safely close this tab.</h1>";
+                }).catch(() => {
+                    document.body.innerHTML = "<h1 style='text-align:center; margin-top: 20%; color: #c9d1d9;'>App Closed. You can safely close this tab.</h1>";
+                });
+            }
+        }
 
         // --- FILE LOADING LOGIC ---
         document.addEventListener("DOMContentLoaded", () => {
@@ -223,6 +235,7 @@
         let clicks = [];
         let flattened = false;
         let finalImageBase64 = "";
+        let lastSavedFilename = "";
         
         const canvas = document.getElementById('sniper-canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -257,6 +270,8 @@
             
             if (e.key === 'Escape') resetToNewCard();
             else if (e.key === 'Shift') { shiftPressed = true; updateLoupe(lastMouseE); }
+            else if (k === '+') { currentZoom = Math.min(10, currentZoom + 1); if(shiftPressed) updateLoupe(lastMouseE); }
+            else if (k === '-') { currentZoom = Math.max(1, currentZoom - 1); if(shiftPressed) updateLoupe(lastMouseE); }
             else if (k === 'z') { undoClick(); }
             else if (e.key === ' ') { e.preventDefault(); registerClick(); } 
             else if (['w','a','s','d'].includes(k)) {
@@ -298,9 +313,9 @@
         let lastMouseE = null;
         
         canvas.addEventListener('mousemove', (e) => {
+            hoverTarget = 'front';
             if (clicks.length >= 8) return;
             lastMouseE = e;
-            hoverTarget = 'front';
             
             const rect = canvas.getBoundingClientRect();
             lastInternalX = ((e.clientX - rect.left) / rect.width) * canvas.width;
@@ -333,12 +348,17 @@
         function syncCSSCrosshairs() {
             if (hoverTarget !== 'front') return;
             const rect = canvas.getBoundingClientRect();
-            const cssX = (lastInternalX / canvas.width) * rect.width;
-            const cssY = (lastInternalY / canvas.height) * rect.height;
             
             cxLine.style.display = 'block'; cyLine.style.display = 'block';
-            cxLine.style.top = (cssY / rect.height * 100) + '%'; 
-            cyLine.style.left = (cssX / rect.width * 100) + '%'; 
+            
+            const cssX = (lastInternalX / canvas.width) * rect.width;
+            const cssY = (lastInternalY / canvas.height) * rect.height;
+
+            cxLine.style.top = cssY + 'px'; 
+            cxLine.style.left = '0px'; 
+
+            cyLine.style.left = cssX + 'px'; 
+            cyLine.style.top = '0px'; 
             
             const fakeE = { pageX: rect.left + cssX + window.scrollX, pageY: rect.top + cssY + window.scrollY };
             if (shiftPressed) updateLoupe(fakeE);
@@ -358,7 +378,7 @@
             loupeContainer.style.left = (e.pageX - 90) + 'px';
             loupeContainer.style.top = (e.pageY - 90) + 'px';
             
-            const zoom = 4; 
+            const zoom = currentZoom; 
             const sW = 180 / zoom;
             const sH = 180 / zoom;
             const sx = lastInternalX - sW / 2;
@@ -399,6 +419,8 @@
         function resetSniperState() {
             clicks = []; flattened = false; mathBox.style.display = 'none';
             document.getElementById('save-btn').style.display = 'none';
+            finalImageBase64 = "";
+            lastSavedFilename = "";
             tiltX = 0; tiltY = 0; applyCrosshairTilts();
             
             cxLine.style.display = 'none'; cyLine.style.display = 'none';
@@ -423,6 +445,15 @@
             if (hoverTarget === 'back' || clicks.length === 0) return;
             
             if (clicks.length === 8) {
+                if (lastSavedFilename) {
+                    fetch('/delete_export', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filename: lastSavedFilename })
+                    });
+                    lastSavedFilename = "";
+                }
+
                 clicks.pop();
                 mathBox.style.display = 'none';
                 document.getElementById('save-btn').style.display = 'none';
@@ -636,7 +667,7 @@
                 
                 // Draw permanent measurement lines
                 fCtx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
-                fCtx.lineWidth = 2;
+                fCtx.lineWidth = 4; 
                 for (let i = 4; i < clicks.length; i++) {
                     if (i === 4 || i === 5) {
                         fCtx.beginPath(); fCtx.moveTo(clicks[i].x, 0); fCtx.lineTo(clicks[i].x, 2100); fCtx.stroke();
@@ -663,6 +694,12 @@
                         original_name: currentFrontFilename, 
                         image_base64: finalSavedImageBase64 
                     })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        lastSavedFilename = data.saved_as;
+                    }
                 });
             };
             flatImg.src = finalImageBase64;

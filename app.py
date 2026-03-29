@@ -5,6 +5,7 @@ import base64
 import time
 import threading
 import subprocess
+import signal
 from flask import Flask, render_template, jsonify, request, send_from_directory
 
 app = Flask(__name__)
@@ -93,6 +94,29 @@ def save_export():
             return jsonify({"success": False, "error": str(e)})
             
     return jsonify({"success": False, "error": "No image data provided"})
+
+@app.route("/delete_export", methods=["POST"])
+def delete_export():
+    """Deletes an exported image file by filename."""
+    data = request.json
+    filename = data.get("filename")
+    
+    if filename:
+        filepath = os.path.join(EXPORTS_DIR, filename)
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+                return jsonify({"success": True})
+            except Exception as e:
+                return jsonify({"success": False, "error": str(e)})
+    
+    return jsonify({"success": False, "error": "Invalid filename or file not found"})
+
+@app.route("/exit", methods=["POST"])
+def exit_app():
+    """Shuts down the application safely."""
+    os.kill(os.getpid(), signal.SIGTERM)
+    return jsonify({"success": True})
 
 def open_browser():
     time.sleep(1.5)
