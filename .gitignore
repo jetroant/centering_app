@@ -11,3 +11,9 @@ dist/
 
 # Compiled Executable (Should be in GitHub Releases, not source control)
 CenteringApp
+
+# Ignore images in scans and exports, but keep the directories
+scans/*
+exports/*
+!scans/.gitkeep
+!exports/.gitkeep
