@@ -266,12 +266,12 @@
             if (e.ctrlKey || e.metaKey) return;
             const k = e.key.toLowerCase();
             
-            if (e.repeat && !['w','a','s','d','i','k','j','l'].includes(k)) return;
+            if (e.repeat && !['w','a','s','d','i','k','j','l', '+', '=', '?', '-', '_'].includes(k)) return;
             
             if (e.key === 'Escape') resetToNewCard();
             else if (e.key === 'Shift') { shiftPressed = true; updateLoupe(lastMouseE); }
-            else if (k === '+') { currentZoom = Math.min(10, currentZoom + 1); if(shiftPressed) updateLoupe(lastMouseE); }
-            else if (k === '-') { currentZoom = Math.max(1, currentZoom - 1); if(shiftPressed) updateLoupe(lastMouseE); }
+            else if (['+', '=', '?'].includes(k)) { currentZoom = Math.min(10, currentZoom + 1); if(shiftPressed) updateLoupe(lastMouseE); }
+            else if (['-', '_'].includes(k)) { currentZoom = Math.max(1, currentZoom - 1); if(shiftPressed) updateLoupe(lastMouseE); }
             else if (k === 'z') { undoClick(); }
             else if (e.key === ' ') { e.preventDefault(); registerClick(); } 
             else if (['w','a','s','d'].includes(k)) {
