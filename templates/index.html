@@ -25,16 +25,18 @@
         #back-wrapper img { cursor: crosshair; }
         canvas { display: block; }
         
+        /* CSS Hover Lines */
         .crosshair-line { position: absolute; pointer-events: none; z-index: 20; display: none; transition: transform 0.1s linear;}
         #crosshair-x { width: 100%; height: 2px; left: 0; background-image: linear-gradient(to right, rgba(255, 0, 255, 0.9) 10px, transparent 10px); background-size: 20px 2px; }
         #crosshair-y { height: 100%; width: 2px; top: 0; background-image: linear-gradient(to bottom, rgba(255, 0, 255, 0.9) 10px, transparent 10px); background-size: 2px 20px; }
         
-        #loupe-container { position: absolute; width: 180px; height: 180px; border: 2px solid #ff00ff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,0,0,0.9); pointer-events: none; display: none; z-index: 1050; background-color: #0d1117; overflow: hidden; }
+        /* Unified Canvas Loupe */
+        #loupe-container { position: absolute; width: 240px; height: 240px; border: 2px solid #ff00ff; border-radius: 50%; box-shadow: 0 0 15px rgba(0,0,0,0.9); pointer-events: none; display: none; z-index: 1050; background-color: #0d1117; overflow: hidden; }
         #loupe-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        .loupe-cross-line { position: absolute; pointer-events: none; z-index: 1051; transition: transform 0.1s linear;}
-        #loupe-x { width: 100%; height: 1px; top: 50%; left: 0; background-image: linear-gradient(to right, rgba(255, 0, 255, 0.8) 4px, transparent 4px); background-size: 20px 1px; transform: translateY(-50%);}
-        #loupe-y { height: 100%; width: 1px; left: 50%; top: 0; background-image: linear-gradient(to bottom, rgba(255, 0, 255, 0.8) 4px, transparent 4px); background-size: 1px 20px; transform: translateX(-50%);}
+        .loupe-cross-line { position: absolute; pointer-events: none; z-index: 1051; display: none;}
+        #loupe-x { width: 100%; height: 1px; top: 50%; left: 0; background-color: rgba(255, 0, 255, 0.5); transform: translateY(-50%);}
+        #loupe-y { height: 100%; width: 1px; left: 50%; top: 0; background-color: rgba(255, 0, 255, 0.5); transform: translateX(-50%);}
         
         #tool-state-text { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: #1d76db; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 1.2em; z-index: 1100;}
         #math-box { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); display: none; background-color: #21262d; border: 2px solid #30363d; border-radius: 8px; padding: 15px 30px; text-align: center; font-size: 1.4em; font-weight: bold; color: #c9d1d9; z-index: 1100; box-shadow: 0 5px 15px rgba(0,0,0,0.5);}
@@ -82,24 +84,24 @@
     </div>
     
     <div id="loupe-container">
-        <canvas id="loupe-canvas" width="180" height="180"></canvas>
+        <canvas id="loupe-canvas" width="240" height="240"></canvas>
         <div id="loupe-x" class="loupe-cross-line"></div>
         <div id="loupe-y" class="loupe-cross-line"></div>
     </div>
 
     <div class="controls-map">
         <div>
-            <strong>Left Hand (Keyboard)</strong><br>
-            <span class="key">WASD</span> : Micro-nudge Crosshairs<br>
-            <span class="key">Spacebar</span> : Lock Point (Click)<br>
-            <span class="key">Shift</span> : Precise Speed + Loupe<br>
-            <span class="key">+ / -</span> : Adjust Loupe Zoom<br>
-            <span class="key">Z</span> : Undo Exactly One Point<br>
+            <strong>Left Hand (Keyboard Tuning)</strong><br>
+            <span class="key">W / S</span> : Nudge Up / Down<br>
+            <span class="key">A / D</span> : Nudge Left / Right<br>
+            <span class="key">Q / E</span> : Tilt Edge Angle<br>
+            <span class="key">Space</span> : Lock Current Edge<br>
+            <span class="key">Z</span> : Undo Last Lock<br>
         </div>
         <div>
-            <strong>Right Hand (Tilt & View)</strong><br>
-            <span class="key">I / K</span> : Tilt Vertical Line<br>
-            <span class="key">J / L</span> : Tilt Horizontal Line<br>
+            <strong>Right Hand (View)</strong><br>
+            <span class="key">+ / -</span> : Adjust Loupe Zoom<br>
+            <span class="key">Shift</span> : Hold for Sub-Pixel Precision<br>
             <span class="key">Esc</span> : Reset UI<br>
         </div>
     </div>
@@ -107,7 +109,7 @@
     <script>
         // --- APP STATE ---
         let currentFrontFilename = "manual_card.jpg";
-        let currentZoom = 3;
+        let currentZoom = 2.5;
 
         function exitApp() {
             if(confirm("Are you sure you want to exit the app?")) {
@@ -231,10 +233,31 @@
             return {x: u/w, y: v/w};
         }
 
-        // --- THE SNIPER ENGINE (UNTOUCHED LOGIC) ---
-        let clicks = [];
+        function intersect(l1, l2) {
+            let dx = l2.cx - l1.cx;
+            let dy = l2.cy - l1.cy;
+            let det = Math.cos(l2.angle) * Math.sin(l1.angle) - Math.sin(l2.angle) * Math.cos(l1.angle);
+            if (Math.abs(det) < 1e-6) return null; 
+            let u = (dy * Math.cos(l2.angle) - dx * Math.sin(l2.angle)) / det;
+            return {
+                x: l1.cx + u * Math.cos(l1.angle),
+                y: l1.cy + u * Math.sin(l1.angle)
+            };
+        }
+
+        // --- THE SNIPER ENGINE (BORDER CENTERING LOGIC) ---
+        let lines = [];        
+        let draftLine = null;  
+        let clicks = [];       
+        let draftClick = null;
+        
         let flattened = false;
+        let isDragging = false;
+        let dragStart = {x:0, y:0};
+        let dragCurrent = {x:0, y:0};
+        
         let finalImageBase64 = "";
+        let cachedImageData = null; 
         let lastSavedFilename = "";
         
         const canvas = document.getElementById('sniper-canvas');
@@ -258,51 +281,83 @@
         let hoverTarget = 'front';
         let lastInternalX = 0;
         let lastInternalY = 0;
-        
-        let tiltX = 0;
-        let tiltY = 0;
 
         document.addEventListener('keydown', e => {
             if (e.ctrlKey || e.metaKey) return;
             const k = e.key.toLowerCase();
             
-            if (e.repeat && !['w','a','s','d','i','k','j','l', '+', '=', '?', '-', '_'].includes(k)) return;
+            if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '+') {
+                currentZoom = Math.min(10, currentZoom + 0.5);
+                if (shiftPressed) updateLoupe(lastMouseE);
+                return;
+            }
+            if (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.key === '-') {
+                currentZoom = Math.max(1, currentZoom - 0.5);
+                if (shiftPressed) updateLoupe(lastMouseE);
+                return;
+            }
+            
+            if (e.repeat && !['w','a','s','d','q','e'].includes(k)) return;
             
             if (e.key === 'Escape') resetToNewCard();
             else if (e.key === 'Shift') { shiftPressed = true; updateLoupe(lastMouseE); }
-            else if (['+', '=', '?'].includes(k)) { currentZoom = Math.min(10, currentZoom + 1); if(shiftPressed) updateLoupe(lastMouseE); }
-            else if (['-', '_'].includes(k)) { currentZoom = Math.max(1, currentZoom - 1); if(shiftPressed) updateLoupe(lastMouseE); }
             else if (k === 'z') { undoClick(); }
-            else if (e.key === ' ') { e.preventDefault(); registerClick(); } 
-            else if (['w','a','s','d'].includes(k)) {
+            else if (e.key === ' ') { 
+                e.preventDefault(); 
+                if (!flattened && draftLine) {
+                    lines.push(draftLine);
+                    draftLine = null;
+                    if (lines.length === 4) attemptFlatten();
+                    else updateStateText(`Phase 1: Swipe Outer Edge (${lines.length}/4)`);
+                    drawState();
+                } else if (flattened && draftClick) {
+                    clicks.push(draftClick);
+                    draftClick = null;
+                    
+                    if (clicks.length === 4) {
+                        cxLine.style.display = 'none'; cyLine.style.display = 'none'; loupeContainer.style.display = 'none';
+                        calculateFinalMath();
+                    } else {
+                        updateStateText(`Phase 2: Drop Inner Border (${clicks.length}/4)`);
+                        syncCSSCrosshairs();
+                    }
+                    drawState();
+                }
+            } 
+            else if (['w','s','a','d'].includes(k)) {
                 e.preventDefault();
-                if (clicks.length >= 8) return;
+                const step = shiftPressed ? 0.5 : 2.0; 
                 
-                const step = shiftPressed ? 1 : 5; 
-                
-                if (k === 'w') lastInternalY -= step;
-                if (k === 's') lastInternalY += step;
-                if (k === 'a') lastInternalX -= step;
-                if (k === 'd') lastInternalX += step;
-                
-                const cW = hoverTarget === 'front' ? canvas.width : backImg.naturalWidth;
-                const cH = hoverTarget === 'front' ? canvas.height : backImg.naturalHeight;
-                lastInternalX = Math.max(0, Math.min(cW, lastInternalX));
-                lastInternalY = Math.max(0, Math.min(cH, lastInternalY));
-                
-                syncCSSCrosshairs();
+                if (!flattened && draftLine) {
+                    if (k === 'w') draftLine.cy -= step;
+                    if (k === 's') draftLine.cy += step;
+                    if (k === 'a') draftLine.cx -= step;
+                    if (k === 'd') draftLine.cx += step;
+                    drawState();
+                    if(shiftPressed) updateLoupe(lastMouseE);
+                } 
+                else if (flattened && draftClick) {
+                    if (k === 'w') draftClick.y -= step;
+                    if (k === 's') draftClick.y += step;
+                    if (k === 'a') draftClick.x -= step;
+                    if (k === 'd') draftClick.x += step;
+                    
+                    draftClick.x = Math.max(0, Math.min(canvas.width, draftClick.x));
+                    draftClick.y = Math.max(0, Math.min(canvas.height, draftClick.y));
+                    
+                    drawState();
+                    syncCSSCrosshairs(); 
+                }
             }
-            else if (['i','k','j','l'].includes(k)) {
+            else if (['q','e'].includes(k)) {
                 e.preventDefault();
-                if (flattened || clicks.length >= 8) return; 
-                
-                const tiltStep = shiftPressed ? 0.2 : 1.0;
-                if (k === 'j') tiltX -= tiltStep; 
-                if (k === 'l') tiltX += tiltStep;
-                if (k === 'i') tiltY -= tiltStep; 
-                if (k === 'k') tiltY += tiltStep;
-                
-                applyCrosshairTilts();
+                if (!flattened && draftLine) {
+                    const step = shiftPressed ? 0.002 : 0.01; 
+                    if (k === 'q') draftLine.angle -= step;
+                    if (k === 'e') draftLine.angle += step;
+                    drawState();
+                    if(shiftPressed) updateLoupe(lastMouseE);
+                }
             }
         });
         
@@ -313,13 +368,18 @@
         let lastMouseE = null;
         
         canvas.addEventListener('mousemove', (e) => {
-            hoverTarget = 'front';
             if (clicks.length >= 8) return;
             lastMouseE = e;
+            hoverTarget = 'front';
             
             const rect = canvas.getBoundingClientRect();
             lastInternalX = ((e.clientX - rect.left) / rect.width) * canvas.width;
             lastInternalY = ((e.clientY - rect.top) / rect.height) * canvas.height;
+            
+            if (!flattened && isDragging) {
+                dragCurrent = {x: lastInternalX, y: lastInternalY};
+                drawState();
+            } 
             
             syncCSSCrosshairs();
         });
@@ -346,88 +406,119 @@
         });
         
         function syncCSSCrosshairs() {
-            if (hoverTarget !== 'front') return;
+            if (hoverTarget !== 'front') {
+                cxLine.style.display = 'none'; cyLine.style.display = 'none';
+                return;
+            }
+            
+            if (!flattened || draftClick) {
+                cxLine.style.display = 'none'; cyLine.style.display = 'none';
+                
+                let lx = lastInternalX, ly = lastInternalY;
+                if (flattened && draftClick) {
+                    if (clicks.length === 0 || clicks.length === 1) lx = draftClick.x;
+                    else ly = draftClick.y;
+                }
+                const rect = canvas.getBoundingClientRect();
+                const cssX = (lx / canvas.width) * rect.width;
+                const cssY = (ly / canvas.height) * rect.height;
+                const fakeE = { pageX: rect.left + cssX + window.scrollX, pageY: rect.top + cssY + window.scrollY };
+                if (shiftPressed) updateLoupe(fakeE);
+                return;
+            }
+            
             const rect = canvas.getBoundingClientRect();
-            
-            cxLine.style.display = 'block'; cyLine.style.display = 'block';
-            
             const cssX = (lastInternalX / canvas.width) * rect.width;
             const cssY = (lastInternalY / canvas.height) * rect.height;
 
-            cxLine.style.top = cssY + 'px'; 
-            cxLine.style.left = '0px'; 
-
-            cyLine.style.left = cssX + 'px'; 
-            cyLine.style.top = '0px'; 
+            if (clicks.length === 0 || clicks.length === 1) {
+                cyLine.style.display = 'block'; cxLine.style.display = 'none';
+                cyLine.style.left = (cssX - 1) + 'px'; 
+                cyLine.style.top = '0px'; 
+            } else if (clicks.length === 2 || clicks.length === 3) {
+                cxLine.style.display = 'block'; cyLine.style.display = 'none';
+                cxLine.style.top = (cssY - 1) + 'px'; 
+                cxLine.style.left = '0px'; 
+            }
             
             const fakeE = { pageX: rect.left + cssX + window.scrollX, pageY: rect.top + cssY + window.scrollY };
             if (shiftPressed) updateLoupe(fakeE);
         }
-        
-        function applyCrosshairTilts() {
-            cxLine.style.transform = `rotate(${tiltX}deg)`;
-            cyLine.style.transform = `rotate(${tiltY}deg)`;
-            loupeX.style.transform = `translateY(-50%) rotate(${tiltX}deg)`;
-            loupeY.style.transform = `translateX(-50%) rotate(${tiltY}deg)`;
-        }
 
         function updateLoupe(e) {
-            if (!e || !shiftPressed || (hoverTarget === 'front' && clicks.length >= 8)) return;
+            if (!e || !shiftPressed || (hoverTarget === 'front' && clicks.length >= 4)) return;
             
             loupeContainer.style.display = 'block';
-            loupeContainer.style.left = (e.pageX - 90) + 'px';
-            loupeContainer.style.top = (e.pageY - 90) + 'px';
+            loupeContainer.style.left = (e.pageX - 120) + 'px';
+            loupeContainer.style.top = (e.pageY - 120) + 'px';
             
-            const zoom = currentZoom; 
-            const sW = 180 / zoom;
-            const sH = 180 / zoom;
-            const sx = lastInternalX - sW / 2;
-            const sy = lastInternalY - sH / 2;
+            let activeZoom = currentZoom;
+            if (flattened) {
+                const hidImg = document.getElementById('hidden-source');
+                if (hidImg && hidImg.naturalWidth) {
+                    const scaleFactor = canvas.width / hidImg.naturalWidth;
+                    activeZoom = currentZoom / scaleFactor;
+                }
+            }
+            
+            const sW = 240 / activeZoom;
+            const sH = 240 / activeZoom;
             
             if (hoverTarget === 'front') {
                 loupeContainer.style.backgroundImage = 'none'; 
-                loupeX.style.display = 'block'; loupeY.style.display = 'block';
-                loupeCtx.clearRect(0, 0, 180, 180);
-                loupeCtx.drawImage(canvas, sx, sy, sW, sH, 0, 0, 180, 180);
                 
-                if (!flattened && clicks.length > 0) {
-                    clicks.forEach(p => {
-                        const drawX = (p.x - sx) * zoom;
-                        const drawY = (p.y - sy) * zoom;
-                        loupeCtx.beginPath();
-                        loupeCtx.moveTo(drawX - 10, drawY); loupeCtx.lineTo(drawX + 10, drawY);
-                        loupeCtx.moveTo(drawX, drawY - 10); loupeCtx.lineTo(drawX, drawY + 10);
-                        loupeCtx.lineWidth = 2; loupeCtx.strokeStyle = '#ff00ff'; loupeCtx.stroke();
-                    });
+                let cx = lastInternalX, cy = lastInternalY;
+                
+                if (flattened) {
+                    if (draftClick) {
+                        loupeX.style.display = 'none'; loupeY.style.display = 'none';
+                        if (clicks.length === 0 || clicks.length === 1) cx = draftClick.x;
+                        else cy = draftClick.y;
+                    } else {
+                        if (clicks.length === 0 || clicks.length === 1) {
+                            loupeY.style.display = 'block'; loupeX.style.display = 'none';
+                        } else {
+                            loupeX.style.display = 'block'; loupeY.style.display = 'none';
+                        }
+                    }
+                } else {
+                    loupeX.style.display = 'none'; loupeY.style.display = 'none';
                 }
+                
+                const sx = cx - sW / 2;
+                const sy = cy - sH / 2;
+                
+                loupeCtx.clearRect(0, 0, 240, 240);
+                loupeCtx.drawImage(canvas, sx, sy, sW, sH, 0, 0, 240, 240);
+                
             } else if (hoverTarget === 'back') {
-                loupeX.style.display = 'none'; loupeY.style.display = 'none';
-                loupeCtx.clearRect(0, 0, 180, 180);
+                loupeCtx.clearRect(0, 0, 240, 240);
                 
                 const rect = backImg.getBoundingClientRect();
                 const cssX = (lastInternalX / backImg.naturalWidth) * rect.width;
                 const cssY = (lastInternalY / backImg.naturalHeight) * rect.height;
                 
                 loupeContainer.style.backgroundImage = `url('${backImg.src}')`;
-                loupeContainer.style.backgroundSize = `${rect.width * zoom}px ${rect.height * zoom}px`;
-                const bgX = -(cssX * zoom - 90);
-                const bgY = -(cssY * zoom - 90);
+                loupeContainer.style.backgroundSize = `${rect.width * currentZoom}px ${rect.height * currentZoom}px`;
+                const bgX = -(cssX * currentZoom - 120);
+                const bgY = -(cssY * currentZoom - 120);
                 loupeContainer.style.backgroundPosition = `${bgX}px ${bgY}px`;
             }
         }
 
         function resetSniperState() {
-            clicks = []; flattened = false; mathBox.style.display = 'none';
+            lines = []; draftLine = null; clicks = []; draftClick = null;
+            flattened = false; mathBox.style.display = 'none';
             document.getElementById('save-btn').style.display = 'none';
-            finalImageBase64 = "";
+            finalImageBase64 = ""; cachedImageData = null;
             lastSavedFilename = "";
-            tiltX = 0; tiltY = 0; applyCrosshairTilts();
+            isDragging = false;
             
             cxLine.style.display = 'none'; cyLine.style.display = 'none';
             
             const hidImg = document.getElementById('hidden-source');
             if (hidImg.src && hidImg.src !== window.location.href) {
-                updateStateText("Phase 1: Click 4 Outer Corners (Any Order)");
+                updateStateText("Phase 1: Swipe Outer Edges (Hold & Drag)");
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(hidImg, 0, 0, canvas.width, canvas.height);
             } else {
@@ -442,9 +533,9 @@
         }
 
         function undoClick() {
-            if (hoverTarget === 'back' || clicks.length === 0) return;
+            if (hoverTarget === 'back') return;
             
-            if (clicks.length === 8) {
+            if (clicks.length === 4) {
                 if (lastSavedFilename) {
                     fetch('/delete_export', {
                         method: 'POST',
@@ -458,14 +549,14 @@
                 mathBox.style.display = 'none';
                 document.getElementById('save-btn').style.display = 'none';
                 syncCSSCrosshairs(); 
-                updateStateText(`Phase 2: Click Inner Borders (3/4)`);
+                updateStateText(`Phase 2: Drop Inner Border (3/4)`);
                 drawState();
                 return;
             }
             
-            if (flattened && clicks.length === 4) {
+            if (flattened && clicks.length === 0 && !draftClick) {
                 flattened = false;
-                clicks.pop();
+                draftLine = lines.pop(); 
                 
                 const hidImg = document.getElementById('hidden-source');
                 const sWrap = document.getElementById('sniper-wrapper');
@@ -480,17 +571,48 @@
                 canvas.style.width = exactW + 'px'; canvas.style.height = exactH + 'px';
                 canvas.width = hidImg.naturalWidth; canvas.height = hidImg.naturalHeight;
                 
-                applyCrosshairTilts(); 
+                ctx.drawImage(hidImg, 0, 0, canvas.width, canvas.height);
                 
-                updateStateText(`Phase 1: Click 4 Outer Corners (3/4)`);
+                updateStateText(`Phase 1: Tune Edge ${lines.length+1} (Space to lock)`);
                 drawState();
                 return;
             }
             
-            clicks.pop();
-            drawState();
-            if (flattened) updateStateText(`Phase 2: Click Inner Borders (${clicks.length - 4}/4)`);
-            else updateStateText(`Phase 1: Click 4 Outer Corners (${clicks.length}/4)`);
+            if (flattened) {
+                if (draftClick) draftClick = null;
+                else clicks.pop();
+                drawState();
+                updateStateText(`Phase 2: Drop Inner Border (${clicks.length}/4)`);
+                syncCSSCrosshairs();
+            } else {
+                if (draftLine) draftLine = null;
+                else if (lines.length > 0) draftLine = lines.pop();
+                drawState();
+                updateStateText(draftLine ? `Phase 1: Tune Edge ${lines.length+1} (Space to lock)` : `Phase 1: Swipe Outer Edge (${lines.length}/4)`);
+            }
+        }
+
+        function drawInfiniteLine(ctx, line, color, thickness=2) {
+            let dx = Math.cos(line.angle) * 5000;
+            let dy = Math.sin(line.angle) * 5000;
+            ctx.beginPath();
+            ctx.moveTo(line.cx - dx, line.cy - dy);
+            ctx.lineTo(line.cx + dx, line.cy + dy);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = thickness;
+            ctx.stroke();
+        }
+        
+        function drawPhase2Line(ctx, pt, index, color, thickness=2) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = thickness;
+            ctx.beginPath();
+            if (index === 0 || index === 1) {
+                ctx.moveTo(pt.x, 0); ctx.lineTo(pt.x, canvas.height);
+            } else {
+                ctx.moveTo(0, pt.y); ctx.lineTo(canvas.width, pt.y);
+            }
+            ctx.stroke();
         }
 
         function drawState() {
@@ -499,73 +621,96 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(hidImg, 0, 0, canvas.width, canvas.height);
                 
-                clicks.forEach((p) => {
-                    ctx.beginPath();
-                    ctx.moveTo(p.x - 15, p.y); ctx.lineTo(p.x + 15, p.y);
-                    ctx.moveTo(p.x, p.y - 15); ctx.lineTo(p.x, p.y + 15);
-                    ctx.lineWidth = 4; ctx.strokeStyle = '#ff00ff'; ctx.stroke();
-                });
+                lines.forEach(l => drawInfiniteLine(ctx, l, 'rgba(255, 0, 255, 0.8)', 2));
+                
+                if (draftLine) drawInfiniteLine(ctx, draftLine, 'rgba(0, 255, 255, 0.9)', 1);
+                
+                if (isDragging) {
+                    ctx.beginPath(); ctx.moveTo(dragStart.x, dragStart.y); ctx.lineTo(dragCurrent.x, dragCurrent.y);
+                    ctx.strokeStyle = 'rgba(227, 179, 65, 0.8)'; ctx.lineWidth = 2; ctx.stroke();
+                }
             } else {
-                const flatImg = new Image();
-                flatImg.onload = () => {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(flatImg, 0, 0);
-                    for (let i = 4; i < clicks.length; i++) {
-                        if (i === 4 || i === 5) {
-                            ctx.beginPath(); ctx.moveTo(clicks[i].x, 0); ctx.lineTo(clicks[i].x, canvas.height);
-                            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)'; ctx.lineWidth = 2; ctx.stroke();
-                        } else {
-                            ctx.beginPath(); ctx.moveTo(0, clicks[i].y); ctx.lineTo(canvas.width, clicks[i].y);
-                            ctx.strokeStyle = 'rgba(255, 0, 255, 0.8)'; ctx.lineWidth = 2; ctx.stroke();
-                        }
-                    }
-                };
-                flatImg.src = finalImageBase64;
-            }
-        }
-
-        function registerClick() {
-            if (clicks.length >= 8 || hoverTarget === 'back') return;
-            const hidImg = document.getElementById('hidden-source');
-            if (!hidImg.src || hidImg.src === window.location.href) return;
-            
-            clicks.push({ x: lastInternalX, y: lastInternalY });
-            
-            if (clicks.length < 4) {
-                drawState();
-                updateStateText(`Phase 1: Click 4 Outer Corners (${clicks.length}/4)`);
-            } else if (clicks.length === 4) {
-                drawState();
-                performFlatteningWarp();
-            } else if (clicks.length < 8) {
-                drawState(); 
-                updateStateText(`Phase 2: Click Inner Borders (${clicks.length - 4}/4)`);
-            } else if (clicks.length === 8) {
-                drawState();
-                cxLine.style.display = 'none'; cyLine.style.display = 'none'; loupeContainer.style.display = 'none';
-                calculateFinalMath();
+                if (cachedImageData) {
+                    ctx.putImageData(cachedImageData, 0, 0);
+                }
+                
+                for (let i = 0; i < clicks.length; i++) {
+                    drawPhase2Line(ctx, clicks[i], i, 'rgba(255, 0, 255, 0.8)', 2);
+                }
+                if (draftClick) {
+                    drawPhase2Line(ctx, draftClick, clicks.length, 'rgba(0, 255, 255, 0.9)', 1);
+                }
             }
         }
 
         canvas.addEventListener('mousedown', (e) => {
             if (e.button === 2) { e.preventDefault(); undoClick(); return; }
-            if (e.button === 0) registerClick();
+            if (e.button === 0) {
+                if (flattened) {
+                    if (!draftClick && clicks.length < 4) {
+                        draftClick = { x: lastInternalX, y: lastInternalY };
+                        updateStateText(`Phase 2: Tune Border ${clicks.length+1} (WASD, Space to lock)`);
+                        drawState();
+                        syncCSSCrosshairs();
+                    }
+                } else {
+                    if (draftLine) return; 
+                    isDragging = true;
+                    dragStart = {x: lastInternalX, y: lastInternalY};
+                }
+            }
         });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (!flattened && isDragging) {
+                isDragging = false;
+                let dx = dragCurrent.x - dragStart.x;
+                let dy = dragCurrent.y - dragStart.y;
+                if (Math.hypot(dx, dy) < 10) return; 
+                
+                draftLine = {
+                    cx: (dragStart.x + dragCurrent.x) / 2,
+                    cy: (dragStart.y + dragCurrent.y) / 2,
+                    angle: Math.atan2(dy, dx)
+                };
+                
+                updateStateText(`Phase 1: Tune Edge ${lines.length+1} (WASD/QE, Space to Lock)`);
+                drawState();
+                if(shiftPressed) updateLoupe({ pageX: e.pageX, pageY: e.pageY });
+            }
+        });
+
         canvas.addEventListener('contextmenu', e => e.preventDefault());
 
-        function performFlatteningWarp() {
+        function attemptFlatten() {
+            let tempCorners = [];
+            for(let i=0; i<4; i++){
+                for(let j=i+1; j<4; j++){
+                    let angleDiff = Math.abs(lines[i].angle - lines[j].angle) % Math.PI;
+                    if (angleDiff > Math.PI/2) angleDiff = Math.PI - angleDiff;
+                    
+                    if (angleDiff > Math.PI/6) {
+                        let pt = intersect(lines[i], lines[j]);
+                        if (pt) tempCorners.push(pt);
+                    }
+                }
+            }
+            if (tempCorners.length !== 4) {
+                updateStateText("Lines don't form a closed rectangle. Press Z to fix.", "#da3633");
+                return;
+            }
+            
+            let ccx = tempCorners.reduce((s, p) => s + p.x, 0) / 4;
+            let ccy = tempCorners.reduce((s, p) => s + p.y, 0) / 4;
+            let sortedCorners = tempCorners.sort((a, b) => Math.atan2(a.y - ccy, a.x - ccx) - Math.atan2(b.y - ccy, b.x - ccx));
+            
+            performFlatteningWarp(sortedCorners);
+        }
+
+        function performFlatteningWarp(sortedCorners) {
             flattened = true;
             updateStateText("Flattening... (Please Wait)", "#e3b341");
-            
-            cxLine.style.transform = 'none'; cyLine.style.transform = 'none';
-            loupeX.style.transform = 'translateY(-50%)'; loupeY.style.transform = 'translateX(-50%)';
-            
-            let cx = clicks.slice(0,4).reduce((sum, p) => sum + p.x, 0) / 4;
-            let cy = clicks.slice(0,4).reduce((sum, p) => sum + p.y, 0) / 4;
-            
-            let sortedCorners = clicks.slice(0,4).sort((a, b) => {
-                return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
-            });
+            cxLine.style.display = 'none'; cyLine.style.display = 'none';
             
             setTimeout(() => {
                 const targetW = 1500;
@@ -576,9 +721,7 @@
                 const sW = canvas.width;
                 const sH = canvas.height;
                 
-                const hInv = getHomography([
-                    {x: 0, y: 0}, {x: targetW, y: 0}, {x: targetW, y: targetH}, {x: 0, y: targetH}
-                ], sortedCorners);
+                const hInv = getHomography([{x: 0, y: 0}, {x: targetW, y: 0}, {x: targetW, y: targetH}, {x: 0, y: targetH}], sortedCorners);
                 
                 for (let y = 0; y < targetH; y++) {
                     for (let x = 0; x < targetW; x++) {
@@ -603,6 +746,8 @@
                 
                 finalImageBase64 = canvas.toDataURL("image/jpeg", 0.95);
                 
+                cachedImageData = ctx.getImageData(0, 0, canvas.width, canvas.height); 
+                
                 const sWrap = document.getElementById('sniper-wrapper');
                 const maxW = window.innerWidth * 0.45;
                 const maxH = window.innerHeight * 0.75;
@@ -613,23 +758,17 @@
                 sWrap.style.width = exactW + 'px'; sWrap.style.height = exactH + 'px';
                 canvas.style.width = exactW + 'px'; canvas.style.height = exactH + 'px';
                 
-                updateStateText("Phase 2: Click 4 Inner Yellow Borders (Any Order)", "#1d76db");
-                
-                if(shiftPressed) updateLoupe({ pageX: window.scrollX + sWrap.getBoundingClientRect().left + exactW/2, pageY: window.scrollY + sWrap.getBoundingClientRect().top + exactH/2 });
+                updateStateText("Phase 2: Drop Inner Border (1/4)", "#1d76db");
+                syncCSSCrosshairs(); 
                 
             }, 50); 
         }
 
         function calculateFinalMath() {
-            let pts = clicks.slice(4, 8);
-            
-            pts.sort((a,b) => a.x - b.x); 
-            let leftPx = pts[0].x;
-            let rightPx = pts[3].x;
-            
-            pts.sort((a,b) => a.y - b.y);
-            let topPx = pts[0].y;
-            let botPx = pts[3].y;
+            let leftPx = Math.min(clicks[0].x, clicks[1].x);
+            let rightPx = Math.max(clicks[0].x, clicks[1].x);
+            let topPx = Math.min(clicks[2].y, clicks[3].y);
+            let botPx = Math.max(clicks[2].y, clicks[3].y);
             
             let lr_ratio = Math.round((leftPx / (leftPx + (1500 - rightPx))) * 100);
             lRatioStr = `${lr_ratio}/${100 - lr_ratio}`;
@@ -655,7 +794,6 @@
         }
 
         function saveMathToBackend() {
-            // [NEW FEATURE] Draw the text onto the 1500x2100 canvas before converting to base64
             const finalCvs = document.createElement('canvas');
             finalCvs.width = 1500;
             finalCvs.height = 2100;
@@ -668,8 +806,8 @@
                 // Draw permanent measurement lines
                 fCtx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
                 fCtx.lineWidth = 4; 
-                for (let i = 4; i < clicks.length; i++) {
-                    if (i === 4 || i === 5) {
+                for (let i = 0; i < clicks.length; i++) {
+                    if (i === 0 || i === 1) {
                         fCtx.beginPath(); fCtx.moveTo(clicks[i].x, 0); fCtx.lineTo(clicks[i].x, 2100); fCtx.stroke();
                     } else {
                         fCtx.beginPath(); fCtx.moveTo(0, clicks[i].y); fCtx.lineTo(1500, clicks[i].y); fCtx.stroke();
