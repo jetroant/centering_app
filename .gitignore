@@ -17,3 +17,6 @@ scans/*
 exports/*
 !scans/.gitkeep
 !exports/.gitkeep
+
+# AI Agent Configuration
+GEMINI.md

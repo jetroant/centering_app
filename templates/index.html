@@ -22,7 +22,6 @@
         .workspace { display: flex; flex: 1; padding: 20px; gap: 30px; align-items: center; justify-content: center; position: relative;}
         
         .img-wrapper { position: relative; border-radius: 10px; border: 2px solid #30363d; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; background-color: #000; cursor: crosshair;}
-        #back-wrapper img { cursor: crosshair; }
         canvas { display: block; }
         
         /* CSS Hover Lines */
@@ -41,7 +40,7 @@
         #tool-state-text { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: #1d76db; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; font-size: 1.2em; z-index: 1100;}
         #math-box { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); display: none; background-color: #21262d; border: 2px solid #30363d; border-radius: 8px; padding: 15px 30px; text-align: center; font-size: 1.4em; font-weight: bold; color: #c9d1d9; z-index: 1100; box-shadow: 0 5px 15px rgba(0,0,0,0.5);}
         
-        .controls-map { position: absolute; left: 20px; bottom: 20px; background-color: #161b22; padding: 15px; border-radius: 8px; border: 1px solid #30363d; font-size: 0.85em; color: #8b949e; line-height: 1.6; z-index: 100; display: flex; gap: 30px;}
+        .controls-map { position: absolute; left: 20px; bottom: 20px; background-color: #161b22; padding: 15px; border-radius: 8px; border: 1px solid #30363d; font-size: 0.85em; color: #8b949e; line-height: 1.6; z-index: 100; display: flex; gap: 30px; pointer-events: none; opacity: 0.8;}
         .controls-map strong { color: #58a6ff; }
         .controls-map .key { background: #21262d; border: 1px solid #4b5563; padding: 2px 6px; border-radius: 4px; color: #c9d1d9; font-family: monospace;}
         
@@ -57,12 +56,10 @@
         <div class="file-controls">
             <button class="btn" onclick="loadDefaults()">↻ Load Defaults</button>
             <button class="btn" onclick="document.getElementById('front-upload').click()">+ Browse Front...</button>
-            <button class="btn" onclick="document.getElementById('back-upload').click()">+ Browse Back...</button>
             <button class="btn btn-primary" id="save-btn" onclick="resetToNewCard()" style="display:none;">Save & Next</button>
             <button class="btn" style="background-color: #da3633; border-color: #b32d2a; color: white;" onclick="exitApp()">Exit App</button>
             
-            <input type="file" id="front-upload" accept="image/*" onchange="handleFileUpload(event, 'front')">
-            <input type="file" id="back-upload" accept="image/*" onchange="handleFileUpload(event, 'back')">
+            <input type="file" id="front-upload" accept="image/*" onchange="handleFileUpload(event)">
         </div>
     </div>
     
@@ -74,10 +71,6 @@
             <canvas id="sniper-canvas"></canvas>
             <div id="crosshair-x" class="crosshair-line"></div>
             <div id="crosshair-y" class="crosshair-line"></div>
-        </div>
-        
-        <div class="img-wrapper" id="back-wrapper">
-            <img id="speed-back" src="" alt="No Backside Loaded" style="display: block; max-height: 75vh; max-width: 40vw; object-fit: contain;">
         </div>
         
         <img id="hidden-source" src="" crossorigin="anonymous" style="display:none;">
@@ -138,30 +131,17 @@
                     } else {
                         updateStateText("No default front image found in scans folder.", "#da3633");
                     }
-                    
-                    if(data.back) {
-                        document.getElementById('speed-back').src = data.back;
-                        document.getElementById('speed-back').alt = "";
-                    } else {
-                        document.getElementById('speed-back').src = "";
-                        document.getElementById('speed-back').alt = "No Backside Found";
-                    }
                 });
         }
 
         // Native Browser File Handling (Zero Backend Needed for Browsing!)
-        function handleFileUpload(event, type) {
+        function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
             
             const objectURL = URL.createObjectURL(file);
-            if (type === 'front') {
-                currentFrontFilename = file.name;
-                loadFrontImage(objectURL);
-            } else {
-                document.getElementById('speed-back').src = objectURL;
-                document.getElementById('speed-back').alt = "";
-            }
+            currentFrontFilename = file.name;
+            loadFrontImage(objectURL);
             // Reset input so you can select the same file again if needed
             event.target.value = ""; 
         }
@@ -262,7 +242,6 @@
         
         const canvas = document.getElementById('sniper-canvas');
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const backImg = document.getElementById('speed-back');
         
         const stateText = document.getElementById('tool-state-text');
         const mathBox = document.getElementById('math-box');
@@ -278,7 +257,6 @@
         let lRatioStr = "--";
         let tRatioStr = "--";
         let shiftPressed = false;
-        let hoverTarget = 'front';
         let lastInternalX = 0;
         let lastInternalY = 0;
 
@@ -370,7 +348,6 @@
         canvas.addEventListener('mousemove', (e) => {
             if (clicks.length >= 8) return;
             lastMouseE = e;
-            hoverTarget = 'front';
             
             const rect = canvas.getBoundingClientRect();
             lastInternalX = ((e.clientX - rect.left) / rect.width) * canvas.width;
@@ -388,29 +365,7 @@
             cxLine.style.display = 'none'; cyLine.style.display = 'none'; loupeContainer.style.display = 'none';
         });
 
-        backImg.addEventListener('mousemove', (e) => {
-            lastMouseE = e;
-            hoverTarget = 'back';
-            
-            cxLine.style.display = 'none'; cyLine.style.display = 'none';
-            
-            const rect = backImg.getBoundingClientRect();
-            lastInternalX = ((e.clientX - rect.left) / rect.width) * backImg.naturalWidth;
-            lastInternalY = ((e.clientY - rect.top) / rect.height) * backImg.naturalHeight;
-            
-            if (shiftPressed) updateLoupe(e);
-        });
-
-        backImg.addEventListener('mouseleave', () => {
-            loupeContainer.style.display = 'none';
-        });
-        
         function syncCSSCrosshairs() {
-            if (hoverTarget !== 'front') {
-                cxLine.style.display = 'none'; cyLine.style.display = 'none';
-                return;
-            }
-            
             if (!flattened || draftClick) {
                 cxLine.style.display = 'none'; cyLine.style.display = 'none';
                 
@@ -446,7 +401,7 @@
         }
 
         function updateLoupe(e) {
-            if (!e || !shiftPressed || (hoverTarget === 'front' && clicks.length >= 4)) return;
+            if (!e || !shiftPressed || clicks.length >= 4) return;
             
             loupeContainer.style.display = 'block';
             loupeContainer.style.left = (e.pageX - 120) + 'px';
@@ -464,46 +419,31 @@
             const sW = 240 / activeZoom;
             const sH = 240 / activeZoom;
             
-            if (hoverTarget === 'front') {
-                loupeContainer.style.backgroundImage = 'none'; 
-                
-                let cx = lastInternalX, cy = lastInternalY;
-                
-                if (flattened) {
-                    if (draftClick) {
-                        loupeX.style.display = 'none'; loupeY.style.display = 'none';
-                        if (clicks.length === 0 || clicks.length === 1) cx = draftClick.x;
-                        else cy = draftClick.y;
-                    } else {
-                        if (clicks.length === 0 || clicks.length === 1) {
-                            loupeY.style.display = 'block'; loupeX.style.display = 'none';
-                        } else {
-                            loupeX.style.display = 'block'; loupeY.style.display = 'none';
-                        }
-                    }
-                } else {
+            loupeContainer.style.backgroundImage = 'none'; 
+            
+            let cx = lastInternalX, cy = lastInternalY;
+            
+            if (flattened) {
+                if (draftClick) {
                     loupeX.style.display = 'none'; loupeY.style.display = 'none';
+                    if (clicks.length === 0 || clicks.length === 1) cx = draftClick.x;
+                    else cy = draftClick.y;
+                } else {
+                    if (clicks.length === 0 || clicks.length === 1) {
+                        loupeY.style.display = 'block'; loupeX.style.display = 'none';
+                    } else {
+                        loupeX.style.display = 'block'; loupeY.style.display = 'none';
+                    }
                 }
-                
-                const sx = cx - sW / 2;
-                const sy = cy - sH / 2;
-                
-                loupeCtx.clearRect(0, 0, 240, 240);
-                loupeCtx.drawImage(canvas, sx, sy, sW, sH, 0, 0, 240, 240);
-                
-            } else if (hoverTarget === 'back') {
-                loupeCtx.clearRect(0, 0, 240, 240);
-                
-                const rect = backImg.getBoundingClientRect();
-                const cssX = (lastInternalX / backImg.naturalWidth) * rect.width;
-                const cssY = (lastInternalY / backImg.naturalHeight) * rect.height;
-                
-                loupeContainer.style.backgroundImage = `url('${backImg.src}')`;
-                loupeContainer.style.backgroundSize = `${rect.width * currentZoom}px ${rect.height * currentZoom}px`;
-                const bgX = -(cssX * currentZoom - 120);
-                const bgY = -(cssY * currentZoom - 120);
-                loupeContainer.style.backgroundPosition = `${bgX}px ${bgY}px`;
+            } else {
+                loupeX.style.display = 'none'; loupeY.style.display = 'none';
             }
+            
+            const sx = cx - sW / 2;
+            const sy = cy - sH / 2;
+            
+            loupeCtx.clearRect(0, 0, 240, 240);
+            loupeCtx.drawImage(canvas, sx, sy, sW, sH, 0, 0, 240, 240);
         }
 
         function resetSniperState() {
@@ -533,8 +473,6 @@
         }
 
         function undoClick() {
-            if (hoverTarget === 'back') return;
-            
             if (clicks.length === 4) {
                 if (lastSavedFilename) {
                     fetch('/delete_export', {
@@ -556,6 +494,7 @@
             
             if (flattened && clicks.length === 0 && !draftClick) {
                 flattened = false;
+                cachedImageData = null;
                 draftLine = lines.pop(); 
                 
                 const hidImg = document.getElementById('hidden-source');
@@ -648,7 +587,10 @@
             if (e.button === 0) {
                 if (flattened) {
                     if (!draftClick && clicks.length < 4) {
-                        draftClick = { x: lastInternalX, y: lastInternalY };
+                        draftClick = { 
+                            x: Math.max(0, Math.min(canvas.width, lastInternalX)), 
+                            y: Math.max(0, Math.min(canvas.height, lastInternalY)) 
+                        };
                         updateStateText(`Phase 2: Tune Border ${clicks.length+1} (WASD, Space to lock)`);
                         drawState();
                         syncCSSCrosshairs();
@@ -806,6 +748,10 @@
                 // Draw permanent measurement lines
                 fCtx.strokeStyle = 'rgba(255, 0, 255, 0.8)';
                 fCtx.lineWidth = 4; 
+                
+                // Explicitly draw the outer border to ensure it's included
+                fCtx.strokeRect(2, 2, 1496, 2096);
+                
                 for (let i = 0; i < clicks.length; i++) {
                     if (i === 0 || i === 1) {
                         fCtx.beginPath(); fCtx.moveTo(clicks[i].x, 0); fCtx.lineTo(clicks[i].x, 2100); fCtx.stroke();

@@ -41,13 +41,12 @@ def serve_scans(filename):
 
 @app.route("/get_defaults", methods=["GET"])
 def get_defaults():
-    """Finds the newest front and back images based on user logic."""
+    """Finds the newest front image based on user logic."""
     files = glob.glob(os.path.join(SCANS_DIR, "*.*"))
     # Sort files by modification time (newest first)
     files.sort(key=os.path.getmtime, reverse=True)
     
     front_img = None
-    back_img = None
     
     for f in files:
         fname = os.path.basename(f).lower()
@@ -55,17 +54,12 @@ def get_defaults():
         if not fname.endswith(('.png', '.jpg', '.jpeg', '.webp')):
             continue
             
-        if 'back' in fname and not back_img:
-            back_img = os.path.basename(f)
-        elif 'back' not in fname and not front_img:
+        if 'back' not in fname and not front_img:
             front_img = os.path.basename(f)
-            
-        if front_img and back_img:
             break
             
     return jsonify({
         "front": f"/scans/{front_img}" if front_img else None,
-        "back": f"/scans/{back_img}" if back_img else None,
         "front_filename": front_img
     })
 
